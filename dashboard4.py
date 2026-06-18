@@ -68,8 +68,12 @@ def load_matchups():
     df = pd.read_sql_query("""
         SELECT
             season,
+            week,
+            manager_name,
+            opponent_manager_name,
             team_points,
             opponent_points,
+            margin,
             result
         FROM matchups
     """, conn)
@@ -84,11 +88,6 @@ def load_matchups():
     df["opponent_points"] = pd.to_numeric(
         df["opponent_points"],
         errors="coerce"
-    )
-
-    df["margin"] = abs(
-        df["team_points"] -
-        df["opponent_points"]
     )
 
     return df
@@ -548,6 +547,222 @@ with col2:
     )
 
 st.bar_chart(view.set_index("opponent")["win_pct"])
+
+
+
+# =====================================================
+# HIGHEST SCORES EVER
+# =====================================================
+
+st.subheader("🔥 Highest Scores Ever")
+
+highest_scores = (
+    matchups[
+        [
+            "season",
+            "week",
+            "manager_name",
+            "team_points"
+        ]
+    ]
+    .sort_values(
+        "team_points",
+        ascending=False
+    )
+    .head(10)
+)
+
+st.dataframe(highest_scores)
+
+# =====================================================
+# LOWEST SCORES EVER
+# =====================================================
+
+st.subheader("🥶 Lowest Scores Ever")
+
+lowest_scores = (
+    matchups[
+        ["season", "manager_name", "team_points"]
+    ]
+    .sort_values(
+        "team_points",
+        ascending=True
+    )
+    .head(10)
+)
+
+st.dataframe(lowest_scores)
+
+# =====================================================
+# BAD BEATS
+# =====================================================
+
+st.subheader("💔 Bad Beats")
+
+closest_games = (
+    matchups
+    .sort_values("margin")
+    .drop_duplicates(
+        subset=[
+            "season",
+            "week",
+            "margin"
+        ]
+    )
+    .head(10)
+)
+
+
+st.write("Top 10 Closest Matchups")
+
+st.dataframe(
+    closest_games[
+        [
+            "season",
+            "week",
+            "manager_name",
+            "opponent_manager_name",
+            "team_points",
+            "opponent_points",
+            "margin"
+        ]
+    ]
+)
+bad_beats = (
+    matchups[
+        (matchups["result"] == "L")
+        &
+        (matchups["margin"] < 1)
+    ]
+    .groupby("manager_name")
+    .size()
+    .reset_index(name="bad_beats")
+)
+
+st.write("Losses by Less Than 1 Point")
+
+st.dataframe(
+    bad_beats.sort_values(
+        "bad_beats",
+        ascending=False
+    )
+)
+
+# =====================================================
+# DYNASTY POWER RANKINGS
+# =====================================================
+
+st.subheader("👑 Dynasty Power Rankings")
+
+dynasty = df.copy()
+
+# Base score from wins
+dynasty["dynasty_points"] = dynasty["wins"] * 1
+
+# Finishing bonuses
+dynasty.loc[dynasty["rank"] == 1, "dynasty_points"] += 100
+dynasty.loc[dynasty["rank"] == 2, "dynasty_points"] += 60
+dynasty.loc[dynasty["rank"] == 3, "dynasty_points"] += 40
+dynasty.loc[dynasty["rank"] == 4, "dynasty_points"] += 25
+
+# Last-place penalty
+max_rank = dynasty.groupby("season")["rank"].transform("max")
+
+dynasty.loc[
+    dynasty["rank"] == max_rank,
+    "dynasty_points"
+] -= 10
+
+# Most-points bonus
+for season in dynasty["season"].unique():
+
+    season_df = dynasty[dynasty["season"] == season]
+
+    idx = season_df["points_for"].idxmax()
+
+    dynasty.loc[idx, "dynasty_points"] += 10
+
+# Aggregate manager scores
+dynasty_rankings = (
+    dynasty.groupby("manager_name")
+    .agg(
+        dynasty_points=("dynasty_points", "sum"),
+        championships=("rank", lambda x: (x == 1).sum()),
+        second=("rank", lambda x: (x == 2).sum()),
+        third=("rank", lambda x: (x == 3).sum()),
+        seasons=("season", "count"),
+        wins=("wins", "sum"),
+        points_for=("points_for", "sum")
+    )
+    .reset_index()
+)
+
+dynasty_rankings = dynasty_rankings.sort_values(
+    "dynasty_points",
+    ascending=False
+)
+
+dynasty_rankings["Power Rank"] = range(
+    1,
+    len(dynasty_rankings) + 1
+)
+
+st.dataframe(
+    dynasty_rankings[
+        [
+            "Power Rank",
+            "manager_name",
+            "dynasty_points",
+            "championships",
+            "second",
+            "third",
+            "wins",
+            "seasons"
+        ]
+    ]
+)
+
+st.subheader("🏆 Dynasty Leaderboard")
+
+chart_df = (
+    dynasty_rankings
+    .head(10)
+    .set_index("manager_name")
+)
+
+st.bar_chart(
+    chart_df["dynasty_points"]
+)
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric(
+        "Dynasty King",
+        dynasty_rankings.iloc[0]["manager_name"]
+    )
+
+with col2:
+    st.metric(
+        "Most Championships",
+        dynasty_rankings.sort_values(
+            "championships",
+            ascending=False
+        ).iloc[0]["manager_name"]
+    )
+
+with col3:
+    st.metric(
+        "Most Career Wins",
+        dynasty_rankings.sort_values(
+            "wins",
+            ascending=False
+        ).iloc[0]["manager_name"]
+    )
+
+# =====================================================
+# EXPORT TO EXCEL
+# =====================================================
 
 st.subheader("📤 Export Full Dataset")
 
