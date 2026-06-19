@@ -57,6 +57,10 @@ def load_data():
 
     return df
 
+# =====================================================
+# LOAD ELO
+# =====================================================
+
 def load_elo():
 
     conn = sqlite3.connect(DB_FILE)
@@ -105,6 +109,66 @@ def load_matchups():
 
     return df
 
+# =====================================================
+# Load Draft Analysis
+# =====================================================
+
+def load_draft_data():
+    conn = sqlite3.connect(DB_FILE)
+
+    df = pd.read_sql_query("""
+        SELECT
+            season,
+            draft_position,
+            rank,
+            team_name
+        FROM standings
+        WHERE draft_position IS NOT NULL
+    """, conn)
+
+    conn.close()
+
+    df["draft_position"] = pd.to_numeric(df["draft_position"], errors="coerce")
+    df["rank"] = pd.to_numeric(df["rank"], errors="coerce")
+
+    df["championship"] = df["rank"].apply(lambda x: 1 if x == 1 else 0)
+
+    champ_summary = df.groupby("draft_position").agg(
+        championships=("championship", "sum"),
+        seasons=("championship", "count"),
+    ).reset_index()
+
+    champ_summary["champ_rate"] = (
+        champ_summary["championships"] / champ_summary["seasons"]
+    )
+
+    return df, champ_summary
+
+# =====================================================
+# Load Draft Analysis by Slot
+# =====================================================
+
+def draft_slot_summary(df, champ_summary):
+
+    summary = df.groupby("draft_position").agg(
+        avg_finish=("rank", "mean"),
+        best_finish=("rank", "min"),
+        worst_finish=("rank", "max"),
+        seasons=("rank", "count")
+    ).reset_index()
+
+    summary = summary.sort_values("avg_finish")
+
+    combined = summary.merge(
+        champ_summary,
+        on="draft_position",
+        how="left"
+    )
+
+    combined["championships"] = combined["championships"].fillna(0)
+    combined["champ_rate"] = combined["champ_rate"].fillna(0)
+
+    return combined
 
 # =====================================================
 # EXPECTED WINS / LUCK INDEX
@@ -795,9 +859,44 @@ st.metric(
 chart = elo.head(10).set_index(
     "manager_name"
 )
+# =====================================================
+# Draft Slot Analysis
+# =====================================================
 
+st.title("📊 Draft Slot Value Analysis")
 
+df, champ_summary = load_draft_data()
+combined = draft_slot_summary(df, champ_summary)
 
+# Main table
+st.subheader("📊 Full Draft Slot Value Table")
+st.dataframe(combined.sort_values("avg_finish"))
+
+# Chart
+st.subheader("📉 Avg Finish by Draft Slot (lower = better)")
+st.bar_chart(
+    combined.set_index("draft_position")["avg_finish"]
+)
+
+# Elite finishes
+df["elite_finish"] = df["rank"].apply(lambda x: 1 if x <= 3 else 0)
+df["championship"] = df["rank"].apply(lambda x: 1 if x == 1 else 0)
+
+elite = df.groupby("draft_position").agg(
+    elite_rate=("elite_finish", "mean"),
+    champ_rate=("championship", "mean")
+).reset_index()
+
+st.subheader("🔥 Elite Finish Rate (Top 3)")
+st.dataframe(elite.sort_values("elite_rate", ascending=False))
+
+# Best slot
+best_slot = combined.sort_values("avg_finish").iloc[0]
+
+st.success(
+    f"🏆 Best historical draft slot: {int(best_slot['draft_position'])} "
+    f"(Avg Finish: {best_slot['avg_finish']:.2f})"
+)
 
 
 # =====================================================
