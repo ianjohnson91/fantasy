@@ -730,6 +730,7 @@ st.dataframe(
 # =====================================================
 
 st.subheader("👑 Dynasty Power Rankings")
+st.write("1st = 100, 2nd= 60, 3rd= 40, 4th= 25, 5th= 10, 6th= 5, Last= -10, Most Pts= 10, Wins= 1")
 
 dynasty = df.copy()
 
@@ -741,6 +742,8 @@ dynasty.loc[dynasty["rank"] == 1, "dynasty_points"] += 100
 dynasty.loc[dynasty["rank"] == 2, "dynasty_points"] += 60
 dynasty.loc[dynasty["rank"] == 3, "dynasty_points"] += 40
 dynasty.loc[dynasty["rank"] == 4, "dynasty_points"] += 25
+dynasty.loc[dynasty["rank"] == 5, "dynasty_points"] += 10
+dynasty.loc[dynasty["rank"] == 6, "dynasty_points"] += 5
 
 # Last-place penalty
 max_rank = dynasty.groupby("season")["rank"].transform("max")
