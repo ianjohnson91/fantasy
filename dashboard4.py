@@ -57,6 +57,19 @@ def load_data():
 
     return df
 
+def load_elo():
+
+    conn = sqlite3.connect(DB_FILE)
+
+    df = pd.read_sql_query("""
+        SELECT *
+        FROM manager_elo
+    """, conn)
+
+    conn.close()
+
+    return df
+
 
 # =====================================================
 # LOAD MATCHUPS
@@ -639,7 +652,7 @@ bad_beats = (
     .reset_index(name="bad_beats")
 )
 
-st.write("Losses by Less Than 1 Point")
+st.subheader("Losses by Less Than 1 Point")
 
 st.dataframe(
     bad_beats.sort_values(
@@ -722,17 +735,7 @@ st.dataframe(
     ]
 )
 
-st.subheader("🏆 Dynasty Leaderboard")
 
-chart_df = (
-    dynasty_rankings
-    .head(10)
-    .set_index("manager_name")
-)
-
-st.bar_chart(
-    chart_df["dynasty_points"]
-)
 
 col1, col2, col3 = st.columns(3)
 
@@ -759,6 +762,43 @@ with col3:
             ascending=False
         ).iloc[0]["manager_name"]
     )
+
+# =====================================================
+# ELO
+# =====================================================
+
+st.subheader("🔥 Manager Elo Ratings")
+
+elo = load_elo()
+
+elo["Rank"] = range(
+    1,
+    len(elo) + 1
+)
+
+st.dataframe(
+    elo[
+        [
+            "Rank",
+            "manager_name",
+            "elo"
+        ]
+    ]
+)
+
+st.metric(
+    "Highest Rated Manager",
+    elo.iloc[0]["manager_name"],
+    f"{elo.iloc[0]['elo']:.0f}"
+)
+
+chart = elo.head(10).set_index(
+    "manager_name"
+)
+
+
+
+
 
 # =====================================================
 # EXPORT TO EXCEL
